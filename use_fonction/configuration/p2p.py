@@ -20,13 +20,20 @@ Variables:
 
 import json
 import yaml
+import os
 
-chemin_use_fonction = 'F:/projet indus/use_fonction/'
+# Get Bot-Clash-Royal directory dynamically
+current_file = os.path.abspath(__file__)
+config_dir = os.path.dirname(current_file)  # use_fonction/configuration
+use_fonction_dir = os.path.dirname(config_dir)  # use_fonction
+bot_clash_dir = os.path.dirname(use_fonction_dir)  # Bot-Clash-Royal
 
-chemin_vgg10='ai_creation/ia_ingame/vgg10_model_light.pth'
-chemin_yolo=chemin_use_fonction+"v2.pt"
+chemin_use_fonction = use_fonction_dir + '/'
 
-fichier_yaml = 'F:/projet indus final/Bot-Clash-Royal/use_fonction/configuration/data.yaml'
+chemin_vgg10 = os.path.join(bot_clash_dir, 'ai_creation/ia_ingame/vgg10_model_light.pth')
+chemin_yolo = os.path.join(use_fonction_dir, 'v2.pt')
+
+fichier_yaml = os.path.join(config_dir, 'data.yaml')
 with open(fichier_yaml, 'r') as fichier:
     labels = yaml.safe_load(fichier)
 
@@ -34,7 +41,7 @@ classes_yolo=labels["names"]
 # print(classes_yolo)
 
 # Chemin vers votre fichier JSON
-fichier_json = 'F:/projet indus final/Bot-Clash-Royal/use_fonction/configuration/roi_data.json'
+fichier_json = os.path.join(config_dir, 'roi_data.json')
 with open(fichier_json, 'r') as fichier:
     roi_info = json.load(fichier)
 

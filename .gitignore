@@ -1,0 +1,25 @@
+# Python bytecode & caches
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Large datasets, replays & training runs
+dataset/
+replays/
+runs/
+image_non_labelise/
+*.mp4
+*.avi
+
+# Unrelated / temporary local files
+use_fonction/chess.html
+.DS_Store
+Thumbs.db
+*.log

@@ -9,6 +9,9 @@ print("initialisation starting...")
 
 from use_fonction.screen_capture.screen_initialisation import screen_initialisation
 
+# Get the directory of Bot-Clash-Royal
+script_dir = os.path.dirname(os.path.abspath(__file__))
+
 # Créer système de capture video
 windows_capture = screen_initialisation()
 img = windows_capture.get_screen()
@@ -68,19 +71,19 @@ def find_cartes(chemin_dossier,img):
         cv2.rectangle(img, (x, y), (x + w_m, y + h_m), (0, 255, 0), 2)
     return meilleurs_rois_carte
 
-meilleurs_rois_carte = find_cartes("use_fonction/vignettes/",img)
+meilleurs_rois_carte = find_cartes(os.path.join(script_dir, "use_fonction/vignettes/"), img)
 data["ROI_cartes"] = meilleurs_rois_carte
 
 gauche_img = img[:,0:w_img//2,:]
 droite_img = img[:,w_img//2:,:]
 
 ROI_tower=[0,0,0,0]
-template=cv2.cvtColor(cv2.imread("use_fonction/towers/tower_red.jpg"),cv2.COLOR_BGR2RGB)
+template=cv2.cvtColor(cv2.imread(os.path.join(script_dir, "use_fonction/towers/tower_red.jpg")), cv2.COLOR_BGR2RGB)
 
 print("ROI_tower:")
 ROI_tower[0],_=find_correspondant_size(template,droite_img)
 ROI_tower[1],_=find_correspondant_size(template,gauche_img)
-template=cv2.cvtColor(cv2.imread("use_fonction/towers/tower_blue.jpg"),cv2.COLOR_BGR2RGB)
+template=cv2.cvtColor(cv2.imread(os.path.join(script_dir, "use_fonction/towers/tower_blue.jpg")), cv2.COLOR_BGR2RGB)
 ROI_tower[2],_=find_correspondant_size(template,gauche_img)
 ROI_tower[3],_=find_correspondant_size(template,droite_img)
 
@@ -159,5 +162,5 @@ plt.imshow(img)
 plt.title('Correspondance trouvée')
 plt.show()
 
-with open('use_fonction/configuration/roi_data.json', 'w') as f:
+with open(os.path.join(script_dir, 'use_fonction/configuration/roi_data.json'), 'w') as f:
     json.dump(data, f, ensure_ascii=False, indent=4)

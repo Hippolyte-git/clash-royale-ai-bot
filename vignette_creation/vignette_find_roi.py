@@ -16,7 +16,7 @@ import cv2
 from matplotlib import pyplot as plt
 
 # Charger l'image cible et l'image modèle (ROI)
-image_cible = cv2.imread('11.png')
+image_cible = cv2.imread('Figure_1.png')  # L'image dans laquelle on veut trouver la ROI
 image_modele = cv2.imread('tower.jpg')  # La ROI/vignette
 
 x=78

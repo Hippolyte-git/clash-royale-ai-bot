@@ -47,11 +47,13 @@ while running:
     # print(old)
     image = windows_capture.get_screen()
     state = analyse.get_state(image)
-    # print(state)
+    # DEBUG: Print state details
+    if state:
+        print(f"State - In Game: {state[0]}, Elixir: {state[1][2] if len(state) > 1 and len(state[1]) > 2 else 'N/A'}")
     action = bot_ia.get_action(state)
 
     if action!=[]:
-        print(action)
+        print(f"ACTION: {action}")
         time.sleep(1)
         mouse_v.do_action(action)
         # time.sleep(5)
@@ -67,6 +69,6 @@ while running:
             if event.button == 1:  # bouton gauche
                 m_x, m_y = pygame.mouse.get_pos()
                 mouse_v.click(m_x, m_y)
-        
+    
 
 screen_ui.end_ui()

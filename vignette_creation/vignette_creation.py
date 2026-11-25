@@ -15,16 +15,16 @@ Dépendances:
 import cv2
 from matplotlib import pyplot as plt
 
-image_path = '11.png'
+image_path = 'Bot-Clash-Royal/vignette_creation/Figure_1.png'
 new_image_name= 'tower.jpg'
 
 image = cv2.imread(image_path)
 
 if image is not None:
 
-    x=78
-    y=456
-    w=54
+    x=88
+    y=700
+    w=55
     h=65
 
     roi = image[y:y+h, x:x+w]

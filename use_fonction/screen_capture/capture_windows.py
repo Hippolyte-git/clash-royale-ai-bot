@@ -108,6 +108,17 @@ class Screen_video_capture:
             adjusted_width = width - adjusting_width_capture - adjusting_x_capture  # Ajustez si nécessaire
             adjusted_height = height - adjusting_y_capture - adjusting_height_capture  # Ajustez si nécessaire
 
+            # Validate window position and size
+            if adjusted_width <= 0 or adjusted_height <= 0 or adjusted_x < -1000 or adjusted_y < -1000:
+                print(f"Warning: Invalid window dimensions detected. Reconfiguring window...")
+                self.configure_windows()
+                # Try again after reconfiguring
+                x, y, width, height = self.window.left, self.window.top, self.window.width, self.window.height
+                adjusted_x = x + adjusting_x_capture
+                adjusted_y = y + adjusting_y_capture
+                adjusted_width = width - adjusting_width_capture - adjusting_x_capture
+                adjusted_height = height - adjusting_y_capture - adjusting_height_capture
+
             monitor = {"top": adjusted_y, "left": adjusted_x, "width": adjusted_width, "height": adjusted_height}
 
             img = np.array(sct.grab(monitor))  # Capturer l'écran
@@ -124,6 +135,48 @@ class Screen_video_capture:
             frame = cv2.cvtColor(img, cv2.COLOR_BGRA2RGB)
         return frame
     
-    def dev_position_to_screen(self,x,y):
-        pos=[x/self.facteur_echelle+self.window.left+10,y/self.facteur_echelle+self.window.top+30]
-        return pos
+    def dev_position_to_screen(self, x, y):
+        """
+        Convert device/game image coordinates to screen coordinates
+        
+        Args:
+            x, y: coordinates in the game image (0 to image_width, 0 to image_height)
+        
+        Returns:
+            [screen_x, screen_y]: coordinates on the actual screen
+        """
+        # Validate window
+        if self.window is None:
+            return [100, 100]
+        
+        # Get actual window dimensions
+        window_x = self.window.left
+        window_y = self.window.top
+        window_w = self.window.width
+        window_h = self.window.height
+        
+        # Account for adjustments made to the capture
+        adjusted_left = window_x + adjusting_x_capture
+        adjusted_top = window_y + adjusting_y_capture
+        adjusted_w = window_w - adjusting_x_capture - adjusting_width_capture
+        adjusted_h = window_h - adjusting_y_capture - adjusting_height_capture
+        
+        # The image dimensions after resizing to hauteur_capture height
+        # Height is set to hauteur_capture, width is scaled proportionally
+        image_h = self.hauteur_desirer_capture
+        image_w = int(adjusted_w * image_h / adjusted_h) if adjusted_h > 0 else adjusted_w
+        
+        # Convert game coordinates to screen coordinates
+        # Normalize to 0-1 range within the game image
+        norm_x = x / image_w if image_w > 0 else 0
+        norm_y = y / image_h if image_h > 0 else 0
+        
+        # Clamp to valid range
+        norm_x = max(0, min(1, norm_x))
+        norm_y = max(0, min(1, norm_y))
+        
+        # Map to screen coordinates
+        screen_x = adjusted_left + (norm_x * adjusted_w)
+        screen_y = adjusted_top + (norm_y * adjusted_h)
+        
+        return [screen_x, screen_y]

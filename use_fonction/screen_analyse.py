@@ -42,18 +42,19 @@ class Screen_analyse:
         get_elixir(img) : indique l'elixir disponible dans la partie
         get_tower_state(img) : indique si les tours sont détruite ou non dans la partie
     """
-    def __init__(self):
+    def __init__(self, yolo_conf=0.35):
         """
         Créer un objet permettant d'analyser une image du jeu clash royal.
 
         Args:
-            None
+            yolo_conf (float): seuil de confiance minimal pour les détections YOLOv8.
 
         Returns:
             None
         """
-        self.AI_in_game = VGG10(num_classes=2)
-        self.AI_in_game.load_state_dict(torch.load(chemin_vgg10, map_location=torch.device('cpu')))
+        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        self.AI_in_game = VGG10(num_classes=2).to(self.device)
+        self.AI_in_game.load_state_dict(torch.load(chemin_vgg10, map_location=self.device))
         self.AI_in_game.eval()
         self.AI_process_in_game = transforms.Compose([
                     transforms.ToPILImage(),
@@ -62,13 +63,29 @@ class Screen_analyse:
                     transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
                 ])
         self.yolo = YOLO(chemin_yolo)
-        self.classes=classes_yolo
-        self.cartes_roi=ROI_cartes
+        self.yolo_conf = yolo_conf
+        self.classes = self.yolo.names if hasattr(self.yolo, 'names') and self.yolo.names else classes_yolo
+        self.cartes_roi = ROI_cartes
         self.dossier_vignettes = chemin_dossier_vignettes
-        self.classes_cartes=[]
-        self.elixir_roi=ROI_elixir
-        self.tower_roi=ROI_tower
-        self.dossier_image_tower=chemin_dossier_tours
+        self.classes_cartes = []
+        self.elixir_roi = ROI_elixir
+        self.tower_roi = ROI_tower
+        self.dossier_image_tower = chemin_dossier_tours
+
+        # Cache templates in memory to avoid disk I/O every frame
+        self._vignette_templates = self._load_templates(self.dossier_vignettes)
+        self._tower_templates = self._load_templates(self.dossier_image_tower)
+
+    @staticmethod
+    def _load_templates(directory):
+        templates = {}
+        if os.path.isdir(directory):
+            for fichier in os.listdir(directory):
+                chemin_image = os.path.join(directory, fichier)
+                image = cv2.imread(chemin_image)
+                if image is not None:
+                    templates[fichier] = image
+        return templates
     
     def get_state(self, img):
         """
@@ -99,19 +116,14 @@ class Screen_analyse:
         cartes=self.get_cartes(img)
         for i in range(len(cartes)):
             state.append([0,"carte "+str(i),cartes[i]])
-        #yolo pour trouver les unitées
-        results = self.yolo(img)
-        # print("result ---------------------------------")
+        # yolo pour trouver les unités
+        results = self.yolo(img, conf=self.yolo_conf, verbose=False)
         for result in results:
-            # print("#################")
             boxes = result.boxes.xywh.cpu().numpy()
-            # print(result.boxes.cls)
-            u=0
-            for i in boxes:
-                # print(i)
-                id=int(result.boxes.cls[u])
-                state.append([1,[int(i[0]),int(i[1])],str(self.classes[id]),[int(i[2]),int(i[3])]])
-                u+=1
+            for u, i in enumerate(boxes):
+                cls_id = int(result.boxes.cls[u])
+                label = self.classes[cls_id] if cls_id in self.classes or (isinstance(self.classes, list) and cls_id < len(self.classes)) else str(cls_id)
+                state.append([1, [int(i[0]), int(i[1])], str(label), [int(i[2]), int(i[3])]])
         return state
     
     def in_game(self, img):
@@ -125,12 +137,11 @@ class Screen_analyse:
             state : True : en partie
                     False : dans les menus
         """
-        input_image = self.AI_process_in_game(img).unsqueeze(0) 
+        input_image = self.AI_process_in_game(img).unsqueeze(0).to(self.device)
         with torch.no_grad():
             prediction = self.AI_in_game(input_image)
             _, predicted_class = torch.max(prediction, 1)
-            # print(f'Classe prédite : {predicted_class.item()}')
-        return predicted_class==0
+        return predicted_class.item() == 0
     
     def get_cartes(self, img):
         """
@@ -142,30 +153,24 @@ class Screen_analyse:
         Returns:
             cartes : ["nom_cartes_1","nom_cartes_2","nom_cartes_3","nom_cartes_4"]
         """
-        cartes = [0,0,0,0]
-        # print("carte detection_lancement")
+        cartes = [0, 0, 0, 0]
+        seuil = 0.15
         for i in range(len(cartes)):
-            x,y,w,h=self.cartes_roi[i]
+            x, y, w, h = self.cartes_roi[i]
             roi = img[y:y+h, x:x+w]
-            # print(i)
-            max_seuil=0
-            # Parcourir les images du dossier
-            for fichier in os.listdir(self.dossier_vignettes):
-                chemin_image = os.path.join(self.dossier_vignettes, fichier)
-                image = cv2.imread(chemin_image)
-                if image is not None:
-                    resized = cv2.resize(image, (w, h), interpolation=cv2.INTER_AREA)
-                    resultat = cv2.matchTemplate(resized, roi, cv2.TM_CCOEFF_NORMED)
-                    _, max_val, _, _ = cv2.minMaxLoc(resultat)
-                    # Définir un seuil de correspondance
-                    seuil = 0.15
-                    if max_val >= seuil and max_val>max_seuil:
-                        max_seuil = max_val
-                        cartes[i]=fichier
-                        # print(f"Correspondance trouvée pour roi {i} dans l'image : {fichier}")
+            if roi.size == 0:
+                continue
+            max_seuil = 0
+            for fichier, image in self._vignette_templates.items():
+                resized = cv2.resize(image, (w, h), interpolation=cv2.INTER_AREA)
+                resultat = cv2.matchTemplate(resized, roi, cv2.TM_CCOEFF_NORMED)
+                _, max_val, _, _ = cv2.minMaxLoc(resultat)
+                if max_val >= seuil and max_val > max_seuil:
+                    max_seuil = max_val
+                    cartes[i] = fichier
         return cartes
     
-    def get_elixir(self,img):
+    def get_elixir(self, img):
         """
         Analyse une image du jeu clash royal en partie pour connaitre l'elixir disponible.
 
@@ -175,12 +180,14 @@ class Screen_analyse:
         Returns:
             elixir (int) : l'elixir disponible un entier en 0 et 10 inclus
         """
-        x,y,w,h=self.elixir_roi
+        x, y, w, h = self.elixir_roi
+        if w <= 0:
+            return 0
         elixir_bar = img[y:y+h, x:x+w][0]
-        occurrences = len([x for x in elixir_bar if (x[0] > 150 and x[2]>150)])
-        return int(((occurrences+20)/w)*10)
+        occurrences = len([px for px in elixir_bar if (px[0] > 150 and px[2] > 150)])
+        return max(0, min(10, int(((occurrences + 20) / w) * 10)))
     
-    def get_tower_state(self,img):
+    def get_tower_state(self, img):
         """
         Analyse une image du jeu clash royal en partie pour connaitre l'état des tours.
 
@@ -190,26 +197,24 @@ class Screen_analyse:
         Returns:
             state : renvoie une liste de 4 liste de la forme [1,[pos_x,pos_y],"alive/destoyed tower",[h,w]]
         """
-        state=[]
-        for i in self.tower_roi:
-            x,y,w,h=i
+        state = []
+        seuil = 0.25
+        for x, y, w, h in self.tower_roi:
             roi = img[y:y+h, x:x+w]
-            part_state=[1,[x+w//2,y+h//2],"destroyed tower",[w,h]]
-            max_seuil=0
-            for fichier in os.listdir(self.dossier_image_tower):
+            part_state = [1, [x + w // 2, y + h // 2], "destroyed tower", [w, h]]
+            if roi.size == 0:
+                state.append(part_state)
+                continue
+            max_seuil = 0
+            for fichier, image in self._tower_templates.items():
                 try:
-                    chemin_image = os.path.join(self.dossier_image_tower, fichier)
-                    image = cv2.imread(chemin_image)
-                    if image is not None:
-                        resized = cv2.resize(image, (w, h), interpolation=cv2.INTER_AREA)
-                        resultat = cv2.matchTemplate(resized, roi, cv2.TM_CCOEFF_NORMED)
-                        _, max_val, _, _ = cv2.minMaxLoc(resultat)
-                        # Définir un seuil de correspondance
-                        seuil = 0.25
-                        if max_val >= seuil and max_val>max_seuil:
-                            max_seuil = max_val
-                            part_state=[1,[x+w//2,y+h//2],"alive tower",[w,h]]
-                except:
-                    a=0
+                    resized = cv2.resize(image, (w, h), interpolation=cv2.INTER_AREA)
+                    resultat = cv2.matchTemplate(resized, roi, cv2.TM_CCOEFF_NORMED)
+                    _, max_val, _, _ = cv2.minMaxLoc(resultat)
+                    if max_val >= seuil and max_val > max_seuil:
+                        max_seuil = max_val
+                        part_state = [1, [x + w // 2, y + h // 2], "alive tower", [w, h]]
+                except cv2.error:
+                    continue
             state.append(part_state)
         return state
